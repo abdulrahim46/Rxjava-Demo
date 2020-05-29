@@ -1,0 +1,106 @@
+private  void loadMilestones2(final int userId, final int orgId){
+        //final String employeeCode = PrefManager.getUserdetails(getContext()).employeeCode;
+        final String intialBasePath = PrefManager.getCompanyUrl(getContext());
+        String[] parts = intialBasePath.split(Pattern.quote("."));
+        String part1 = parts[0]; // domain name split
+        GetMilestonesData milestoneData =  new GetMilestonesData(userId, orgId);
+        final GoalApiMethodsInterface apis = ApiAbstractFactory.INSTANCE.makeApiCalls(GoalApiMethodsInterface.class,
+                "sohum-hrms-performance.peoplestrong.com");
+
+        Observable
+                .zip(apis.getOverdueMilestones(milestoneData),
+                        apis.getTodayMilestones(milestoneData),
+                        apis.getAllMSTill7Days(milestoneData),
+                        apis.getAllMSBefore30Days(milestoneData),
+                        apis.getAfter30DaysMilestones(milestoneData),
+                        new Function5<Object, Object, Object, Object, Object, List<MilestoneData>>() {
+                            @Override
+                            public List<MilestoneData> apply(Object o, Object o2, Object o3, Object o4, Object o5) throws Exception {
+
+                                //List<MilestoneData> list = new ArrayList();
+                                List<MilestoneData> overdueMilestones = (List<MilestoneData>) o;
+                                List<MilestoneData> todayMilestones = (List<MilestoneData>) o2;
+                                List<MilestoneData> till7DaysMilestones = (List<MilestoneData>) o3;
+                                List<MilestoneData> till30DaysMilestones = (ArrayList<MilestoneData>) o4;
+                                List<MilestoneData> after30DaysMilestones = (List<MilestoneData>) o5;
+                                if(!overdueMilestones.isEmpty() && overdueMilestones.get(0).getStatus() == null){
+                                    mMilestones.addAll(overdueMilestones);
+                                }
+                                if(!todayMilestones.isEmpty() && todayMilestones.get(0).getStatus() == null){
+                                    mMilestones.addAll(todayMilestones);
+                                }
+                                if(!till7DaysMilestones.isEmpty() && till7DaysMilestones.get(0).getStatus() == null){
+                                    mMilestones.addAll(till7DaysMilestones);
+                                }
+                                if(!till30DaysMilestones.isEmpty() && till30DaysMilestones.get(0).getStatus() == null){
+                                    //Logger.i("heollo",list.toString());
+                                    mMilestones.addAll(till30DaysMilestones);
+                                }
+                                if(!after30DaysMilestones.isEmpty() && after30DaysMilestones.get(0).getStatus() == null){
+                                    mMilestones.addAll(after30DaysMilestones);
+                                }
+
+                                Logger.i("heollo",mMilestones.toString());
+                                return mMilestones;
+                            }
+                        })
+                .map(new Function<List<MilestoneData>, List<MilestoneData>>() {
+                    @Override
+                    public List<MilestoneData> apply(List<MilestoneData> milestoneData) throws Exception {
+
+                        return milestoneData;
+                    }
+                })
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribeOn(Schedulers.io())
+                .subscribe(new DisposableObserver<List<MilestoneData>>() {
+                    @Override
+                    public void onNext(List<MilestoneData> milestoneData) {
+                            mFixedSwipeRefreshLayout.setRefreshing(false);
+                            loading = false;
+                            hideProgressDialog();
+                        milestoneData = removeTodoBasedKr(milestoneData);
+                        milestoneData = removeDuplicates(milestoneData);
+                        if (milestoneData.size() > 0){
+                            ((MilestonesAdapter) mRecyclerView.getAdapter()).replaceAll(milestoneData);
+                            mEmptyTextView.setVisibility(View.GONE);
+                            img_empty.setVisibility(View.GONE);
+                            mRecyclerView.setVisibility(View.VISIBLE);
+                        } else {
+                            mEmptyTextView.setVisibility(View.VISIBLE);
+                            mRecyclerView.setVisibility(View.GONE);
+                            img_empty.setVisibility(View.VISIBLE);
+                        }
+
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        hideProgressDialog();
+                        try{
+                            e.printStackTrace();
+                        }catch (Throwable e1){
+                            Log.d("onError Miles ",e1.toString());
+                            Toast.makeText(getContext(),"Something went wrong, please try again", Toast.LENGTH_SHORT).show();
+                        }
+
+                        mFixedSwipeRefreshLayout.setRefreshing(false);
+                        loading = false;
+                        //SHOW ERROR
+                        if (getActivity() == null||!isAdded()) return;
+                        if (TemporaryStorageSingleton.INSTANCE.isNetworkAvailable(getActivity())) {
+                            Toast.makeText(getContext(),getResources().getString(R.string.network_error), Toast.LENGTH_SHORT).show();
+                            //Snackbar.make(rootView, getResources().getString(R.string.network_error), Snackbar.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getContext(),getResources().getString(R.string.no_internet), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        mFixedSwipeRefreshLayout.setRefreshing(false);
+                        loading = false;
+                        hideProgressDialog();
+                    }
+                });
+    }
